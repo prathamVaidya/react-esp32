@@ -1,0 +1,6 @@
+node_modules/
+build/
+# Moddable build output
+$(MODDABLE)/
+*.xsa
+.DS_Store

@@ -1,0 +1,32 @@
+{
+	"include": [
+		"$(MODDABLE)/examples/manifest_base.json",
+		"$(MODDABLE)/modules/pins/i2c/manifest.json",
+		"$(MODDABLE)/modules/pins/digital/monitor/manifest.json"
+	],
+	"modules": {
+		"*": [
+			"./build/main",
+			"./build/App",
+			"./build/Counter",
+			"./build/button",
+			"./build/renderer",
+			"./build/display",
+			"./build/font"
+		],
+		"preact": "./node_modules/preact/dist/preact.module",
+		"preact/hooks": "./node_modules/preact/hooks/dist/hooks.module"
+	},
+	"preload": [
+		"font"
+	],
+	"creation": {
+		"stack": 2048,
+		"keys": {
+			"initial": 256,
+			"incremental": 64,
+			"name": 127,
+			"symbol": 16
+		}
+	}
+}

@@ -1,0 +1,28 @@
+{
+  "name": "preact-esp32",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Preact running on an ESP32 (Moddable XS), rendered to a 0.96\" SSD1306 OLED via a custom renderer (minimal-DOM host config). No browser, no web server.",
+  "type": "module",
+  "scripts": {
+    "postinstall": "node scripts/patch-preact.mjs",
+    "patch:preact": "node scripts/patch-preact.mjs",
+    "build:jsx": "babel src --out-dir build --extensions \".js,.jsx\" --copy-files",
+    "clean": "rm -rf build",
+    "prebuild:jsx": "rm -rf build",
+    "pretest": "npm run build:jsx",
+    "test": "node --import ./test/register.mjs test/smoke.mjs",
+    "presim": "npm run build:jsx",
+    "sim": "node --import ./test/register-sim.mjs test/preview.mjs"
+  },
+  "dependencies": {
+    "preact": "10.29.2",
+    "preact-reconciler": "0.2.3"
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.24.0",
+    "@babel/core": "^7.24.0",
+    "@babel/preset-react": "^7.24.0"
+  }
+}
