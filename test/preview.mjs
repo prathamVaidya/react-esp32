@@ -21,7 +21,7 @@ const live = arg !== "app";
 const Component = arg === "app" ? App : arg === "dash" || arg === "dashboard" ? Dashboard : Counter;
 const HINT =
 	arg === "dash" || arg === "dashboard"
-		? "[Space] tap   [Enter] hold   [q]/Ctrl-C quit"
+		? "[Space] next   [Enter] select   [q]/Ctrl-C quit"
 		: "[Space] press button +1    [q] / Ctrl-C quit";
 
 const display = new Display({ sda: 21, scl: 22, address: 0x3c });

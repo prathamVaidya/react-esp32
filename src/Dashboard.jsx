@@ -16,7 +16,7 @@
 
 import { h } from "preact";
 import { useReducer, useEffect, useMemo } from "preact/hooks";
-import { onGesture } from "button";
+import { onControls } from "button";
 
 const merge = (a, b) => Object.assign({}, a, b); // robust on XS (no object-spread)
 
@@ -156,9 +156,9 @@ export default function Dashboard() {
 
 	useEffect(() => {
 		const id = setInterval(() => dispatch({ type: "TICK" }), 1000);
-		const off = onGesture({
-			onTap: () => dispatch({ type: "TAP" }),
-			onHold: () => dispatch({ type: "HOLD" }),
+		const off = onControls({
+			onNext: () => dispatch({ type: "TAP" }), // NEXT button or BOOT tap
+			onSelect: () => dispatch({ type: "HOLD" }), // SELECT button or BOOT hold
 		});
 		return () => {
 			clearInterval(id);

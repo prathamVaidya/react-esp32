@@ -159,7 +159,7 @@ console.log("Test 5: useEffect([]) runs once across re-renders (hooks sanity)");
 
 console.log("Test 6: <Dashboard/> useReducer FSM navigates menu <-> screens");
 {
-	const { _tap, _hold } = await import("button");
+	const { _next, _select } = await import("button");
 	const Dashboard = (await import("Dashboard")).default;
 	const display = new Display({ sda: 21, scl: 22, address: 0x3c });
 	mount(h(Dashboard, null), display);
@@ -174,20 +174,20 @@ console.log("Test 6: <Dashboard/> useReducer FSM navigates menu <-> screens");
 
 	check(hasText("Network", 4, 25), "menu lists 'Network'");
 
-	_hold(); // open the cursor item (Status)
+	_select(); // open the cursor item (Status)
 	await tick();
-	check(hasText("Uptime", 2, 15), "hold opens Status (Uptime visible)");
+	check(hasText("Uptime", 2, 15), "select opens Status (Uptime visible)");
 
-	_hold(); // back to menu
+	_select(); // back to menu
 	await tick();
-	check(hasText("Network", 4, 25), "hold returns to the menu");
+	check(hasText("Network", 4, 25), "select returns to the menu");
 
-	_tap(); // cursor -> Network
-	_tap(); // cursor -> Settings
+	_next(); // cursor -> Network
+	_next(); // cursor -> Settings
 	await tick();
-	_hold(); // open Settings
+	_select(); // open Settings
 	await tick();
-	check(hasText("Sleep", 4, 35), "tap x2 + hold opens Settings (toggle list)");
+	check(hasText("Sleep", 4, 35), "next x2 + select opens Settings (toggle list)");
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);

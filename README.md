@@ -57,6 +57,23 @@ The element vocabulary is `<text>`, `<rect>`, `<pixel>` instead of
 
 Default I2C address `0x3C`. Change pins/address in [`src/main.js`](src/main.js).
 
+### Buttons
+
+The **BOOT button (GPIO0)** is always available and drives the whole UI on its own
+(**tap** = next/change, **hold ≥0.5 s** = select/confirm/back). Two **optional**
+buttons make the dashboard easier to drive — wire each from the pin **to GND**
+(internal pull-ups are enabled, so an unwired pin idles HIGH and never fires):
+
+| Button   | ESP32 pin | Action          |
+|----------|-----------|-----------------|
+| BOOT     | GPIO0     | tap / hold      |
+| NEXT     | GPIO25 → GND | next / change |
+| SELECT   | GPIO26 → GND | select / back |
+
+GPIO25/26 are non-strapping and free on a WROOM, so leaving them unwired never
+affects boot. Override the pins via `onControls({ pinNext, pinSelect })` in
+[`src/button.js`](src/button.js).
+
 ---
 
 ## Project layout

@@ -13,7 +13,14 @@
 import Digital from "pins/digital";
 import Monitor from "pins/digital/monitor";
 
-const BOOT_BUTTON = 0; // GPIO0
+const BOOT_BUTTON = 0; // GPIO0 (always present)
+
+// Optional extra buttons. Wire each to GND; the internal pull-up holds an
+// unwired pin HIGH so it never fires — they're genuinely optional. GPIO25/26 are
+// free on a WROOM, are NOT strapping pins (so leaving them unwired never affects
+// boot), and support a pull-up. Override via onControls({ pinNext, pinSelect }).
+const PIN_NEXT = 25; // optional "next / change" button -> GND
+const PIN_SELECT = 26; // optional "select / confirm / back" button -> GND
 
 /**
  * Call `callback` once per button press. Returns an unsubscribe function.
@@ -72,4 +79,25 @@ export function onGesture(handlers, options = {}) {
 	};
 
 	return () => monitor.close();
+}
+
+/**
+ * Wire all three UI inputs at once. Returns one unsubscribe for everything.
+ *   - BOOT (GPIO0):    tap -> onNext, hold -> onSelect   (works with one button)
+ *   - NEXT button:     press -> onNext                   (optional, GPIO25)
+ *   - SELECT button:   press -> onSelect                 (optional, GPIO26)
+ * The extra buttons just make navigation easier; nothing breaks if they're absent.
+ */
+export function onControls(handlers, options = {}) {
+	const onNext = handlers.onNext || (() => {});
+	const onSelect = handlers.onSelect || (() => {});
+	const pinNext = options.pinNext === undefined ? PIN_NEXT : options.pinNext;
+	const pinSelect = options.pinSelect === undefined ? PIN_SELECT : options.pinSelect;
+
+	const offs = [
+		onGesture({ onTap: onNext, onHold: onSelect }, { pin: BOOT_BUTTON, holdMs: options.holdMs }),
+		onButton(onNext, { pin: pinNext }),
+		onButton(onSelect, { pin: pinSelect }),
+	];
+	return () => offs.forEach((o) => o());
 }

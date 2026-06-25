@@ -1,9 +1,11 @@
 // Mock of src/button.js for host-side use.
-//   onButton(cb)            -> fires on Space (the simple counter)
-//   onGesture({onTap,onHold}) -> Space = tap, Enter = hold (the dashboard)
-// The smoke test drives them programmatically via _press()/_tap()/_hold().
+//   onButton(cb)                  -> Space (the simple counter)
+//   onControls({onNext,onSelect}) -> Space = next, Enter = select (the dashboard;
+//                                    on hardware these map to BOOT tap/hold +
+//                                    optional NEXT/SELECT buttons)
+// The smoke test drives them via _press()/_next()/_select().
 const callbacks = new Set();
-const gestures = new Set();
+const controls = new Set();
 let wired = false;
 
 function wireKeyboard() {
@@ -17,9 +19,9 @@ function wireKeyboard() {
 		for (const byte of buf) {
 			if (byte === 0x20) {
 				press(); // Space -> onButton press
-				tap(); //          -> onGesture tap
+				next(); //          -> onControls next
 			} else if (byte === 0x0d) {
-				hold(); // Enter -> onGesture hold
+				select(); // Enter -> onControls select
 			} else if (byte === 0x03 || byte === 0x71) {
 				process.exit(0); // Ctrl-C or q
 			}
@@ -30,11 +32,11 @@ function wireKeyboard() {
 function press() {
 	for (const cb of callbacks) cb();
 }
-function tap() {
-	for (const g of gestures) if (g.onTap) g.onTap();
+function next() {
+	for (const c of controls) if (c.onNext) c.onNext();
 }
-function hold() {
-	for (const g of gestures) if (g.onHold) g.onHold();
+function select() {
+	for (const c of controls) if (c.onSelect) c.onSelect();
 }
 
 export function onButton(callback) {
@@ -43,19 +45,19 @@ export function onButton(callback) {
 	return () => callbacks.delete(callback);
 }
 
-export function onGesture(handlers) {
+export function onControls(handlers) {
 	wireKeyboard();
-	gestures.add(handlers);
-	return () => gestures.delete(handlers);
+	controls.add(handlers);
+	return () => controls.delete(handlers);
 }
 
-// Test helpers: drive the button without keyboard input.
+// Test helpers: drive the inputs without keyboard input.
 export function _press() {
 	press();
 }
-export function _tap() {
-	tap();
+export function _next() {
+	next();
 }
-export function _hold() {
-	hold();
+export function _select() {
+	select();
 }
