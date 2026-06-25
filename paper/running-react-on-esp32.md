@@ -184,21 +184,31 @@ export default function App() {
 
 ### 3.2 Commit → paint
 
-Every scene-graph mutation marks the tree dirty and schedules a single repaint via
-a microtask, so a burst of commits paints once. The painter walks the scene graph,
-draws each element into the 1024-byte framebuffer, and flushes. Because all of
-Preact's mutations pass through our node methods, state-driven re-renders
-(`useState`, hooks) are caught automatically — no integration with Preact's
-internals is required.
+Every host mutation records *which* drawable node changed — the host config
+already knows: a `commitTextUpdate` on one text node, a `setAttribute` on one rect
+— and schedules a single repaint via a microtask, coalescing a burst of commits
+into one paint. The painter then erases and redraws only the **dirty rectangle**
+(the union of the changed nodes' old and new bounding boxes) and flushes only the
+framebuffer pages that rectangle spans (§3.3); structural or ambiguous changes
+fall back to a full repaint, which is always correct. Because all of Preact's
+mutations pass through our node methods, state-driven re-renders (`useState`,
+hooks) are caught automatically — no integration with Preact's internals is
+required.
 
 ### 3.3 Dirty-page flush
 
 The SSD1306 stores its image as eight 128-byte "pages," each byte holding eight
 vertically-stacked pixels. We keep the framebuffer in exactly that layout, so
 flushing a page is a straight copy with no bit-shuffling, and we track which pages
-changed since the last flush. Only dirty pages are transmitted. This is the
-mechanism that makes the reconciler's minimal-diff property *worth something* on
-this target: a one-character change touches one or two pages, not the whole bus.
+changed since the last flush. Only dirty pages are transmitted — and the renderer
+(§3.2) drives this directly from the reconciler's diff, so the minimal-diff
+property actually *pays off* on this target. A one-character counter update,
+`Count: 7 → 8`, touches only the two pages that line spans, so the flush ships
+**280 bytes instead of the 1,120 a full-screen repaint sends — 4.0× less I²C
+traffic** (measured by counting bytes on the simulator's mock bus; the figure
+below models the identical transaction). A naive renderer that cleared and
+re-flushed the whole framebuffer on every commit — the obvious first
+implementation — pays the full 1,120 every time.
 
 > **Interactive figure.** [`paper/figures/dirty-page.html`](figures/dirty-page.html)
 > is a self-contained browser model of `display.js`: hover any pixel to see its
@@ -399,14 +409,26 @@ harness, and we avoid inventing latency or frame-rate numbers.
   pixels for "Hello world", and `Count: 0` → `Count: 1` on a simulated press)
   passes. This gives confidence that what the simulator shows is what the panel
   shows.
+- **I²C traffic (measured).** With dirty-rectangle rendering (§3.2), a one-increment
+  counter update ships **280 bytes** over I²C versus **1,120 bytes** for a
+  full-screen repaint — **4.0× less** — counted by instrumenting the simulator's
+  mock bus. A regression test asserts the incrementally-rendered framebuffer is
+  byte-identical to a from-scratch repaint (no ghosting), including the `9 → 10`
+  width change.
+- **Memory (measured live).** The instrumented build's own telemetry, read over
+  serial, reports ~**177 KB** of system heap free after mount, with XS holding a
+  32 KB chunk heap (~26 KB used, dropping to ~9 KB after GC), a ~38 KB slot heap,
+  and a runtime stack peaking at **9 KB of its 32 KB** — closely matching the
+  ~170 KB free we had projected from the manifest's `creation` sizes. GC fires
+  frequently under full re-renders.
 - **Build economics.** The first firmware build (cold-compiling all of ESP-IDF +
   XS) takes ~10–15 minutes; incremental rebuilds after a source change take
   seconds. Iteration speed therefore comes almost entirely from the host
   simulator, not the device.
 
-A fair quantitative evaluation — GC pause distribution under rapid state changes,
-bytes-per-frame on the I²C bus with and without dirty-page tracking, worst-case
-update latency — is future work (§9).
+The I²C-traffic and memory figures above are measured; a fuller quantitative
+evaluation — GC-pause distribution under rapid state changes and worst-case update
+latency in milliseconds — remains future work (§9).
 
 ---
 
@@ -448,7 +470,9 @@ together with the XS-specific failure catalogue — has not been documented.
   thin blit-only firmware. The architecture story would be identical; only the
   location of the reconciler changes. We did not need this path, but it bounds the
   risk.
-- **Benchmarks.** Quantitative latency, bus-traffic, and GC measurements (§7).
+- **Benchmarks.** Bus-traffic and post-mount memory are now measured (§7: 280 vs
+  1,120 bytes per update; ~177 KB free). GC-pause distribution and worst-case
+  update latency in milliseconds remain.
 
 ---
 

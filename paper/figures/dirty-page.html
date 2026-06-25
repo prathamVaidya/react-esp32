@@ -135,7 +135,9 @@
     <div class="legend">
       Each <b>byte</b> = 8 vertical pixels. Each <b>page</b> = a 128-byte row.
       <b>setPixel</b> marks one page dirty; <b>flush</b> ships only dirty pages,
-      streamed over I²C in ≤40-byte chunks. <span class="tag">live model of display.js</span>
+      streamed over I²C in ≤40-byte chunks. The byte counts match the firmware's
+      measured traffic: a counter tick ships 280 B vs 1120 B for a full repaint.
+      <span class="tag">matches measured firmware</span>
     </div>
   </header>
 
