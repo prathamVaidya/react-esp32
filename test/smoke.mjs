@@ -6,6 +6,7 @@
 // Run:  npm test   (which is: node --import ./test/register.mjs test/smoke.mjs)
 
 import { h } from "preact";
+import { useState, useEffect } from "preact/hooks";
 import { glyphFor, FONT_WIDTH, FONT_HEIGHT } from "font";
 import Display from "display";
 import { mount, forceRepaint } from "renderer";
@@ -126,6 +127,34 @@ console.log("Test 4: dirty-rectangle cuts I2C traffic on a localized update");
 	const ratio = (fullBytes / incrementalBytes).toFixed(1);
 	console.log(`       one-increment update: ${incrementalBytes} B  vs  full repaint: ${fullBytes} B  (${ratio}x less)`);
 	check(incrementalBytes < fullBytes / 2, `localized update ships <half the bytes of a full repaint`);
+}
+
+console.log("Test 5: useEffect([]) runs once across re-renders (hooks sanity)");
+{
+	let effectRuns = 0;
+	let cleanupRuns = 0;
+	let setN;
+	function Probe() {
+		const [n, set] = useState(0);
+		setN = set;
+		useEffect(() => {
+			effectRuns++;
+			return () => {
+				cleanupRuns++;
+			};
+		}, []);
+		return h("text", { x: 0, y: 0 }, "n=" + n);
+	}
+	const display = new Display({ sda: 21, scl: 22, address: 0x3c });
+	mount(h(Probe, null), display);
+	await flushEffects();
+	for (let i = 0; i < 5; i++) {
+		setN((v) => v + 1); // re-render without changing the (empty) deps
+		await tick();
+	}
+	await flushEffects();
+	check(effectRuns === 1, `effect ran once across 5 re-renders (ran ${effectRuns}x)`);
+	check(cleanupRuns === 0, `cleanup did not misfire (${cleanupRuns}x)`);
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);
