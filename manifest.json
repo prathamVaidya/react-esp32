@@ -9,6 +9,7 @@
 			"./build/main",
 			"./build/App",
 			"./build/Counter",
+			"./build/Dashboard",
 			"./build/button",
 			"./build/renderer",
 			"./build/display",

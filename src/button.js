@@ -41,3 +41,35 @@ export function onButton(callback, options = {}) {
 
 	return () => monitor.close();
 }
+
+/**
+ * Tap-vs-hold gesture input on a single button. Watches both edges and times the
+ * press: a release before `holdMs` fires onTap, longer fires onHold.
+ *   const off = onGesture({ onTap, onHold });
+ */
+export function onGesture(handlers, options = {}) {
+	const pin = options.pin === undefined ? BOOT_BUTTON : options.pin;
+	const holdMs = options.holdMs === undefined ? 500 : options.holdMs;
+
+	const monitor = new Monitor({
+		pin,
+		mode: Digital.InputPullUp,
+		edge: Monitor.Rising | Monitor.Falling,
+	});
+
+	let pressAt = 0;
+	monitor.onChanged = function () {
+		const pressed = this.read() === 0; // active-low
+		const now = Date.now();
+		if (pressed) {
+			pressAt = now;
+			return;
+		}
+		const dur = now - pressAt;
+		if (dur < 25) return; // ignore contact bounce
+		if (dur >= holdMs) handlers.onHold && handlers.onHold();
+		else handlers.onTap && handlers.onTap();
+	};
+
+	return () => monitor.close();
+}

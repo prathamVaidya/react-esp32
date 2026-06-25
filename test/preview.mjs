@@ -3,21 +3,26 @@
 // Unicode half-blocks (two vertical pixels per character row). What you see is
 // what the SSD1306 would show.
 //
-//   npm run sim            # live <Counter/> (ticks once a second)
+//   npm run sim            # live <Counter/> (Space = +1)
 //   npm run sim app        # static "Hello world"
-//   npm run sim counter    # live counter (explicit)
+//   npm run sim dash       # menu dashboard (Space = tap, Enter = hold)
 //
-// Ctrl-C to quit.
+// Ctrl-C or q to quit.
 
 import { h } from "preact";
 import Display from "display";
 import { mount } from "renderer";
 import App from "App";
 import Counter from "Counter";
+import Dashboard from "Dashboard";
 
 const arg = (process.argv[2] || "counter").toLowerCase();
 const live = arg !== "app";
-const Component = arg === "app" ? App : Counter;
+const Component = arg === "app" ? App : arg === "dash" || arg === "dashboard" ? Dashboard : Counter;
+const HINT =
+	arg === "dash" || arg === "dashboard"
+		? "[Space] tap   [Enter] hold   [q]/Ctrl-C quit"
+		: "[Space] press button +1    [q] / Ctrl-C quit";
 
 const display = new Display({ sda: 21, scl: 22, address: 0x3c });
 mount(h(Component, null), display);
@@ -47,8 +52,7 @@ function paintTerminal() {
 	if (live) {
 		// Redraw in place: home the cursor, write the frame + hint, then erase
 		// anything left below it. No scrolling, no stacked frames, minimal flicker.
-		const hint = "[Space] press button +1    [q] / Ctrl-C quit";
-		process.stdout.write("\x1b[H" + out + "\n" + hint + "\x1b[0J");
+		process.stdout.write("\x1b[H" + out + "\n" + HINT + "\x1b[0J");
 	} else {
 		process.stdout.write(out + "\n");
 	}

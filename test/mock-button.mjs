@@ -1,7 +1,9 @@
-// Mock of src/button.js for host-side use. In the sim it fires on the Space key
-// (read from stdin in raw mode); the smoke test fires it programmatically via
-// the exported _press() helper. Same onButton() API as the device module.
+// Mock of src/button.js for host-side use.
+//   onButton(cb)            -> fires on Space (the simple counter)
+//   onGesture({onTap,onHold}) -> Space = tap, Enter = hold (the dashboard)
+// The smoke test drives them programmatically via _press()/_tap()/_hold().
 const callbacks = new Set();
+const gestures = new Set();
 let wired = false;
 
 function wireKeyboard() {
@@ -13,14 +15,26 @@ function wireKeyboard() {
 	stdin.resume();
 	stdin.on("data", (buf) => {
 		for (const byte of buf) {
-			if (byte === 0x20 || byte === 0x0d) press(); // Space or Enter
-			else if (byte === 0x03 || byte === 0x71) process.exit(0); // Ctrl-C or q
+			if (byte === 0x20) {
+				press(); // Space -> onButton press
+				tap(); //          -> onGesture tap
+			} else if (byte === 0x0d) {
+				hold(); // Enter -> onGesture hold
+			} else if (byte === 0x03 || byte === 0x71) {
+				process.exit(0); // Ctrl-C or q
+			}
 		}
 	});
 }
 
 function press() {
 	for (const cb of callbacks) cb();
+}
+function tap() {
+	for (const g of gestures) if (g.onTap) g.onTap();
+}
+function hold() {
+	for (const g of gestures) if (g.onHold) g.onHold();
 }
 
 export function onButton(callback) {
@@ -29,7 +43,19 @@ export function onButton(callback) {
 	return () => callbacks.delete(callback);
 }
 
-// Test helper: simulate a press without keyboard input.
+export function onGesture(handlers) {
+	wireKeyboard();
+	gestures.add(handlers);
+	return () => gestures.delete(handlers);
+}
+
+// Test helpers: drive the button without keyboard input.
 export function _press() {
 	press();
+}
+export function _tap() {
+	tap();
+}
+export function _hold() {
+	hold();
 }
