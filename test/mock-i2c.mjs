@@ -14,6 +14,12 @@ export default class I2C {
 		this.curCol = 0;
 		this.curPage = 0;
 		this.writes = 0;
+		this.bytes = 0; // total bytes pushed over the bus (for traffic measurement)
+	}
+
+	resetCounters() {
+		this.writes = 0;
+		this.bytes = 0;
 	}
 
 	write(...args) {
@@ -23,6 +29,7 @@ export default class I2C {
 			if (typeof a === "number") bytes.push(a);
 			else for (const b of a) bytes.push(b); // typed array / array
 		}
+		this.bytes += bytes.length;
 		if (bytes.length === 0) return;
 
 		if (bytes[0] === 0x00) {

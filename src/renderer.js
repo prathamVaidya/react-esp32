@@ -38,8 +38,10 @@
  */
 
 import { render } from "preact";
-import { FONT_HEIGHT } from "font";
+import { FONT_HEIGHT, FONT_WIDTH } from "font";
 import Timer from "timer";
+
+const GLYPH_ADVANCE = FONT_WIDTH + 1; // px a character advances (matches display.drawChar)
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
 
@@ -59,7 +61,7 @@ class TextNode {
 	// Preact assigns `.data` when text changes -> this IS commitTextUpdate.
 	set data(value) {
 		this._data = value == null ? "" : "" + value;
-		markDirty();
+		markDirty(this.parentNode); // the drawable <text> element owns this content
 	}
 }
 
@@ -92,7 +94,7 @@ class Element {
 		if (child.parentNode) child.parentNode.removeChild(child);
 		this.childNodes.push(child);
 		child.parentNode = this;
-		markDirty();
+		markDirty(child.nodeType === 3 ? this : child);
 		return child;
 	}
 
@@ -104,7 +106,7 @@ class Element {
 		if (i < 0) this.childNodes.push(child);
 		else this.childNodes.splice(i, 0, child);
 		child.parentNode = this;
-		markDirty();
+		markDirty(child.nodeType === 3 ? this : child);
 		return child;
 	}
 
@@ -112,21 +114,23 @@ class Element {
 	removeChild(child) {
 		const i = this.childNodes.indexOf(child);
 		if (i >= 0) this.childNodes.splice(i, 1);
+		const wasText = child.nodeType === 3;
 		child.parentNode = null;
-		markDirty();
+		if (wasText) markDirty(this); // this <text> lost some content
+		else markRemoved(child); // erase wherever the removed element drew
 		return child;
 	}
 
 	// host config: commitUpdate (a prop was set)
 	setAttribute(name, value) {
 		this.attrs[name] = value;
-		markDirty();
+		markDirty(this);
 	}
 
 	// host config: commitUpdate (a prop was removed)
 	removeAttribute(name) {
 		delete this.attrs[name];
-		markDirty();
+		markDirty(this);
 	}
 
 	// Our elements emit no events; stubs keep Preact's event path happy.
@@ -191,11 +195,36 @@ installDOM();
 let activeDisplay = null;
 let activeRoot = null;
 let paintScheduled = false;
+let hasBaseline = false; // false until the first full paint establishes the image
+let fullDirty = false; // structural/ambiguous change -> repaint everything
 
-function markDirty() {
+// Incremental state: which drawable nodes changed since the last paint, and the
+// regions vacated by removed nodes (which must be erased).
+const dirtyNodes = new Set();
+const removedBoxes = [];
+
+const DRAWABLE = { text: 1, label: 1, rect: 1, box: 1, pixel: 1 };
+
+function schedulePaint() {
 	if (paintScheduled || !activeDisplay) return;
 	paintScheduled = true;
 	Promise.resolve().then(paint);
+}
+
+// Record a changed node. Drawables get tracked precisely (dirty-rectangle);
+// anything else (groups, structural changes, detached text) falls back to a
+// full repaint, which is always correct — just not minimal.
+function markDirty(node) {
+	if (node && node.nodeType === 1 && DRAWABLE[node.localName]) dirtyNodes.add(node);
+	else fullDirty = true;
+	schedulePaint();
+}
+
+function markRemoved(node) {
+	const b = node && node.nodeType === 1 ? node._bbox || bboxOf(node) : null;
+	if (b) removedBoxes.push(b);
+	else fullDirty = true;
+	schedulePaint();
 }
 
 function collectText(element, out) {
@@ -213,19 +242,67 @@ function toInt(v, fallback) {
 	return Number.isNaN(n) ? fallback : n;
 }
 
-function drawNode(node, display) {
-	if (node.nodeType !== 1) return; // text nodes are drawn by their parent
+// The framebuffer region a drawable node occupies (null = nothing to draw).
+function bboxOf(node) {
+	if (!node || node.nodeType !== 1) return null;
+	const a = node.attrs;
+	switch (node.localName) {
+		case "text":
+		case "label": {
+			const parts = [];
+			collectText(node, parts);
+			const len = parts.join("").length;
+			if (len === 0) return null;
+			return { x: toInt(a.x, 0), y: toInt(a.y, 0), w: len * GLYPH_ADVANCE, h: FONT_HEIGHT };
+		}
+		case "rect":
+		case "box": {
+			const w = toInt(a.w, toInt(a.width, 0));
+			const h = toInt(a.h, toInt(a.height, 0));
+			if (w <= 0 || h <= 0) return null;
+			return { x: toInt(a.x, 0), y: toInt(a.y, 0), w, h };
+		}
+		case "pixel":
+			return { x: toInt(a.x, 0), y: toInt(a.y, 0), w: 1, h: 1 };
+		default:
+			return null; // groups don't draw anything themselves
+	}
+}
 
+function unionRect(a, b) {
+	if (!a) return b;
+	if (!b) return a;
+	const x1 = Math.min(a.x, b.x);
+	const y1 = Math.min(a.y, b.y);
+	const x2 = Math.max(a.x + a.w, b.x + b.w);
+	const y2 = Math.max(a.y + a.h, b.y + b.h);
+	return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+}
+
+function intersects(a, b) {
+	if (!a || !b) return false;
+	return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+function clampRect(r) {
+	const x = Math.max(0, r.x);
+	const y = Math.max(0, r.y);
+	const x2 = Math.min(activeDisplay.width, r.x + r.w);
+	const y2 = Math.min(activeDisplay.height, r.y + r.h);
+	return { x, y, w: Math.max(0, x2 - x), h: Math.max(0, y2 - y) };
+}
+
+// Draw a single node's primitive (no recursion); groups draw nothing.
+function drawPrimitive(node, display) {
 	const a = node.attrs;
 	const on = a.color !== "off" && a.color !== 0 && a.color !== false;
-
 	switch (node.localName) {
 		case "text":
 		case "label": {
 			const parts = [];
 			collectText(node, parts);
 			display.drawText(toInt(a.x, 0), toInt(a.y, 0), parts.join(""), on);
-			return; // text content already consumed
+			break;
 		}
 		case "rect":
 		case "box": {
@@ -238,25 +315,66 @@ function drawNode(node, display) {
 			else display.drawRect(x, y, w, h, on);
 			break;
 		}
-		case "pixel": {
+		case "pixel":
 			display.setPixel(toInt(a.x, 0), toInt(a.y, 0), on);
 			break;
-		}
-		default:
-			break; // unknown element = transparent group; just recurse
 	}
+}
 
+// Walk the tree, refreshing each node's stored bbox. rect === null draws every
+// node (full paint); otherwise only nodes intersecting rect are drawn.
+function walk(node, display, rect) {
+	if (node.nodeType !== 1) return;
+	const bb = bboxOf(node);
+	if (bb) {
+		node._bbox = bb;
+		if (rect === null || intersects(bb, rect)) drawPrimitive(node, display);
+	}
 	const kids = node.childNodes;
-	for (let i = 0; i < kids.length; i++) drawNode(kids[i], display);
+	for (let i = 0; i < kids.length; i++) walk(kids[i], display, rect);
+}
+
+function fullPaint() {
+	activeDisplay.clear();
+	const kids = activeRoot.childNodes;
+	for (let i = 0; i < kids.length; i++) walk(kids[i], activeDisplay, null);
+	activeDisplay.flush();
+	hasBaseline = true;
+	dirtyNodes.clear();
+	removedBoxes.length = 0;
+	fullDirty = false;
+}
+
+function incrementalPaint() {
+	// The region that may have changed = union of each dirty node's old + new
+	// bbox, plus the regions vacated by removed nodes.
+	let rect = null;
+	for (const node of dirtyNodes) {
+		rect = unionRect(rect, node._bbox || null);
+		rect = unionRect(rect, bboxOf(node));
+	}
+	for (let i = 0; i < removedBoxes.length; i++) rect = unionRect(rect, removedBoxes[i]);
+	dirtyNodes.clear();
+	removedBoxes.length = 0;
+	if (!rect) return;
+
+	rect = clampRect(rect);
+	if (rect.w <= 0 || rect.h <= 0) return;
+
+	// Erase the dirty rectangle, then redraw every node that overlaps it (in
+	// tree/paint order, which handles overlap). Only the pages this region spans
+	// get marked dirty, so flush() ships just those — not the whole screen.
+	activeDisplay.fillRect(rect.x, rect.y, rect.w, rect.h, false);
+	const kids = activeRoot.childNodes;
+	for (let i = 0; i < kids.length; i++) walk(kids[i], activeDisplay, rect);
+	activeDisplay.flush();
 }
 
 function paint() {
 	paintScheduled = false;
 	if (!activeDisplay || !activeRoot) return;
-	activeDisplay.clear();
-	const kids = activeRoot.childNodes;
-	for (let i = 0; i < kids.length; i++) drawNode(kids[i], activeDisplay);
-	activeDisplay.flush();
+	if (!hasBaseline || fullDirty) fullPaint();
+	else incrementalPaint();
 }
 
 // ---------------------------------------------------------------------------
@@ -273,7 +391,20 @@ export function mount(vnode, display) {
 	installDOM();
 	activeDisplay = display;
 	activeRoot = new Element("root", XHTML_NS);
+	hasBaseline = false;
+	fullDirty = false;
+	dirtyNodes.clear();
+	removedBoxes.length = 0;
 	render(vnode, activeRoot);
-	paint(); // paint once up front; later commits schedule their own repaint
+	paint(); // first paint is full: establishes the baseline image + node bboxes
 	return activeRoot;
+}
+
+/**
+ * Force a full repaint of the current tree (clear + redraw everything). Used by
+ * tests to assert the incrementally-rendered framebuffer matches a from-scratch
+ * render (i.e. no ghosting).
+ */
+export function forceRepaint() {
+	if (activeDisplay && activeRoot) fullPaint();
 }

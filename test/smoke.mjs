@@ -8,7 +8,7 @@
 import { h } from "preact";
 import { glyphFor, FONT_WIDTH, FONT_HEIGHT } from "font";
 import Display from "display";
-import { mount } from "renderer";
+import { mount, forceRepaint } from "renderer";
 import App from "App";
 import Counter from "Counter";
 
@@ -87,6 +87,45 @@ console.log("Test 2: <Counter/> increments on button press");
 	let oneOk = true;
 	for (const p of wantOne) if (!after.has(p)) oneOk = false;
 	check(oneOk, "after one press shows 'Count: 1' (reconciler diffed + recommitted)");
+}
+
+console.log("Test 3: incremental render matches a full repaint (no ghosting)");
+{
+	const { _press } = await import("button");
+	const display = new Display({ sda: 21, scl: 22, address: 0x3c });
+	mount(h(Counter, null), display);
+	await flushEffects();
+	for (let i = 0; i < 12; i++) {
+		_press(); // 0 -> 12: also exercises the '9'->'10' width change
+		await tick();
+	}
+	const incremental = Uint8Array.from(display.i2c.fb); // snapshot after incremental updates
+	forceRepaint(); // redraw the same tree from scratch
+	let diff = 0;
+	for (let i = 0; i < incremental.length; i++)
+		if (incremental[i] !== display.i2c.fb[i]) diff++;
+	check(diff === 0, `framebuffer identical to full repaint (${diff} bytes differ)`);
+}
+
+console.log("Test 4: dirty-rectangle cuts I2C traffic on a localized update");
+{
+	const { _press } = await import("button");
+	const display = new Display({ sda: 21, scl: 22, address: 0x3c });
+	mount(h(Counter, null), display);
+	await flushEffects();
+
+	display.i2c.resetCounters();
+	_press(); // one increment -> only the "Count: N" line changes
+	await tick();
+	const incrementalBytes = display.i2c.bytes;
+
+	display.i2c.resetCounters();
+	forceRepaint(); // what a naive full-screen flush would cost
+	const fullBytes = display.i2c.bytes;
+
+	const ratio = (fullBytes / incrementalBytes).toFixed(1);
+	console.log(`       one-increment update: ${incrementalBytes} B  vs  full repaint: ${fullBytes} B  (${ratio}x less)`);
+	check(incrementalBytes < fullBytes / 2, `localized update ships <half the bytes of a full repaint`);
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);
