@@ -167,9 +167,15 @@ Docs: <https://github.com/Moddable-OpenSource/moddable/blob/public/documentation
 npm run flash                    # release build (console off, smallest)
 npm run flash:debug              # instrumented (serial console @115200, for trace())
 UPLOAD_PORT=/dev/cu.usbserial-XXXX npm run flash   # override the port
+
+# or via make (run `make` with no target for the full list):
+make flash                       # release
+make flash-debug                 # instrumented
+make flash PORT=/dev/cu.usbserial-XXXX
+make monitor                     # read the serial console @115200
 ```
 
-(These call [`scripts/flash.sh`](scripts/flash.sh) — run it directly if you prefer.)
+(All of these call [`scripts/flash.sh`](scripts/flash.sh) — run it directly if you prefer.)
 The script logs each step, sets the Moddable + ESP-IDF env, runs `npm run build:jsx`,
 builds with `mcconfig`, **frees the serial port** (closes any `idf.py monitor`
 holding it), and flashes the bins with `esptool`. It deliberately does **not** use
