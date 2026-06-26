@@ -164,13 +164,15 @@ Docs: <https://github.com/Moddable-OpenSource/moddable/blob/public/documentation
 ### 2. Build + flash the firmware
 
 ```sh
-scripts/flash.sh                 # release build (console off, smallest)
-scripts/flash.sh instrument      # instrumented (serial console @115200, for trace())
-UPLOAD_PORT=/dev/cu.usbserial-XXXX scripts/flash.sh   # override the port
+npm run flash                    # release build (console off, smallest)
+npm run flash:debug              # instrumented (serial console @115200, for trace())
+UPLOAD_PORT=/dev/cu.usbserial-XXXX npm run flash   # override the port
 ```
 
-The script sets the Moddable + ESP-IDF env, runs `npm run build:jsx`, builds with
-`mcconfig`, and flashes the bins with `esptool`. It deliberately does **not** use
+(These call [`scripts/flash.sh`](scripts/flash.sh) — run it directly if you prefer.)
+The script logs each step, sets the Moddable + ESP-IDF env, runs `npm run build:jsx`,
+builds with `mcconfig`, **frees the serial port** (closes any `idf.py monitor`
+holding it), and flashes the bins with `esptool`. It deliberately does **not** use
 `mcconfig -d` (that needs the xsbug GUI app, which the CLI install doesn't build).
 To watch `trace()` output, use an `instrument` build and read the port at 115200
 (e.g. `idf.py -p <port> monitor`, or any serial terminal).

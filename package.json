@@ -14,7 +14,9 @@
     "pretest": "npm run build:jsx",
     "test": "node --import ./test/register.mjs test/smoke.mjs",
     "presim": "npm run build:jsx",
-    "sim": "node --import ./test/register-sim.mjs test/preview.mjs"
+    "sim": "node --import ./test/register-sim.mjs test/preview.mjs",
+    "flash": "bash scripts/flash.sh",
+    "flash:debug": "bash scripts/flash.sh instrument"
   },
   "dependencies": {
     "preact": "10.29.2",
