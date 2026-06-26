@@ -10,9 +10,10 @@
 #   - Sets MODDABLE + ESP-IDF env in one shell (shell state doesn't persist).
 #   - Forces ESP-IDF to use python3.13 (Homebrew's 3.14 is too new for IDF v6.0)
 #     via a /tmp/pyshim that also shadows pyenv's `python`.
-#   - mcconfig's `all` target tries to launch the xsbug GUI (not built) and the
-#     idf_monitor (needs a TTY); both fail headlessly, so we run `make build` +
-#     flash the bins directly with esptool.
+#   - We run `mcconfig` WITHOUT `-m` (generate only) + `make build`, then flash
+#     the bins ourselves with esptool. This avoids mcconfig's deploy step, which
+#     flashes via idf AND launches `idf.py monitor` — and in an interactive
+#     terminal that monitor attaches to the TTY and never exits, hanging the run.
 #   - `stty raw` first: rapid open/close cycles can wedge the USB-serial line
 #     discipline into EINVAL; resetting it fixes "termios Invalid argument".
 set -e
@@ -75,9 +76,10 @@ ok "src/*.jsx compiled to build/"
 log "Building $MODE firmware  (mcconfig + idf — first build can take minutes)"
 FLAG=""
 [ "$MODE" = "instrument" ] && FLAG="-i"
-UPLOAD_PORT="$PORT" mcconfig $FLAG -m -p esp32 >>"$BUILD_LOG" 2>&1 || true # xsbug-launch step fails headlessly; that's fine
+# Generate the project (no -m, so it does NOT deploy/monitor), then build only.
+UPLOAD_PORT="$PORT" mcconfig $FLAG -p esp32 </dev/null >>"$BUILD_LOG" 2>&1
 PROJ="$MODDABLE/build/tmp/esp32/$MODE/preact-esp32"
-( cd "$PROJ" && make build >>"$BUILD_LOG" 2>&1 )
+( cd "$PROJ" && make build </dev/null >>"$BUILD_LOG" 2>&1 )
 BIN="$MODDABLE/build/bin/esp32/$MODE/preact-esp32"
 [ -f "$BIN/xs_esp32.bin" ] || { warn "build produced no xs_esp32.bin — see $BUILD_LOG"; exit 1; }
 ok "firmware built: $(( $(wc -c <"$BIN/xs_esp32.bin") / 1024 )) KB  (xs_esp32.bin)"
